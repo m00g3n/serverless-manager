@@ -1,6 +1,22 @@
+# Module Name used for bundling the OCI Image and later on for referencing in the Kyma Modules
+MODULE_NAME ?= serverless
+# Semantic Module Version used for identifying the build
+MODULE_VERSION ?= 0.0.1
+# Module Registry used for pushing the image
+MODULE_REGISTRY_PORT ?= 8888
+MODULE_REGISTRY ?= op-kcp-registry.localhost:$(MODULE_REGISTRY_PORT)/unsigned
 
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG_REGISTRY_PORT ?= $(MODULE_REGISTRY_PORT)
+IMG_REGISTRY ?= op-skr-registry.localhost:$(IMG_REGISTRY_PORT)/unsigned/operator-images
+IMG ?= $(IMG_REGISTRY)/$(MODULE_NAME)-operator:$(MODULE_VERSION)
+
+# Operating system architecture
+OS_ARCH ?= $(shell uname -m)
+
+# Operating system type
+OS_TYPE ?= $(shell uname)
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.25.0
 
@@ -11,13 +27,24 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# This will change the flags of the `kyma alpha module create` command in case we spot credentials
+# Otherwise we will assume http-based local registries without authentication (e.g. for k3d)
+ifneq (,$(PROW_JOB_ID))
+GCP_ACCESS_TOKEN=$(shell gcloud auth application-default print-access-token)
+MODULE_CREATION_FLAGS=--registry $(MODULE_REGISTRY) -w -c oauth2accesstoken:$(GCP_ACCESS_TOKEN)
+else ifeq (,$(MODULE_CREDENTIALS))
+MODULE_CREATION_FLAGS=--registry $(MODULE_REGISTRY) -w --insecure
+else
+MODULE_CREATION_FLAGS=--registry $(MODULE_REGISTRY) -w -c $(MODULE_CREDENTIALS)
+endif
+
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 .PHONY: all
-all: build
+all: module-build module-template-push
 
 ##@ General
 
@@ -78,6 +105,10 @@ docker-build: test ## Build docker image with the manager.
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	docker push ${IMG}
+
+.PHONY: module-image
+module-image: docker-build docker-push ## Build the Module Image and push it to a registry defined in IMG_REGISTRY
+	echo "built and pushed module image $(IMG)"
 
 # PLATFORMS defines the target platforms for  the manager image be build to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -172,3 +203,50 @@ module-chart: ${MODULECHART}
 .PHONY: module-chart-clean
 module-chart-clean:
 	rm -rf ${MODULECHART}
+
+##@ Module
+
+.PHONY: module-image
+module-image: docker-build docker-push ## Build the Module Image and push it to a registry defined in IMG_REGISTRY
+	echo "built and pushed module image $(IMG)"
+
+.PHONY: module-build
+module-build: kyma ## Build the Module and push it to a registry defined in MODULE_REGISTRY
+	@$(KYMA) alpha create module kyma.project.io/module/$(MODULE_NAME) $(MODULE_VERSION) ./mod $(MODULE_CREATION_FLAGS)
+
+.PHONY: module-template-push
+module-template-push: crane ## Pushes the ModuleTemplate referencing the Image on MODULE_REGISTRY
+	@[[ ! -z "$PROW_JOB_ID" ]] && crane auth login europe-west4-docker.pkg.dev -u oauth2accesstoken -p "$(GCP_ACCESS_TOKEN)" || exit 1
+	@crane append -f <(tar -f - -c ./template.yaml) -t ${MODULE_REGISTRY}/templates/$(MODULE_NAME):$(MODULE_VERSION)
+
+##@ Tools
+
+########## Kyma CLI ###########
+KYMA_STABILITY ?= unstable
+
+# $(call os_error, os-type, os-architecture)
+define os_error
+$(error Error: unsuported platform OS_TYPE:$1, OS_ARCH:$2; to mitigate this problem set variable KYMA with absolute path to kyma-cli binary compatible with your operating system and architecture)
+endef
+
+KYMA_FILE_NAME ?= $(shell ./hack/get_kyma_file_name.sh ${OS_TYPE} ${OS_ARCH})
+
+KYMA ?= $(LOCALBIN)/kyma-$(KYMA_STABILITY)
+kyma: $(LOCALBIN) $(KYMA) ## Download kyma locally if necessary.
+$(KYMA):
+	## Detect if operating system 
+	$(if $(KYMA_FILE_NAME),,$(call os_error, ${OS_TYPE}, ${OS_ARCH}))
+	test -f $@ || curl -s -Lo $(KYMA) https://storage.googleapis.com/kyma-cli-$(KYMA_STABILITY)/$(KYMA_FILE_NAME)
+	chmod 0100 $(KYMA)
+
+########## Grafana Dashboard ###########
+.PHONY: grafana-dashboard
+grafana-dashboard: ## Generating Grafana manifests to visualize controller status.
+	cd operator && kubebuilder edit --plugins grafana.kubebuilder.io/v1-alpha
+
+CRANE ?= $(shell which crane)
+
+.PHONY: crane
+crane: $(CRANE)
+	go install github.com/google/go-containerregistry/cmd/crane@latest
+

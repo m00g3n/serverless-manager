@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: serverless-manager
+  name: serverless-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: serverless-manager
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: serverless-manager
+    spec:
+      containers:
+      - image: op-skr-registry.localhost:8888/unsigned/operator-images/serverless-operator:0.0.1
+        name: controller
+        resources: {}
+status: {}
