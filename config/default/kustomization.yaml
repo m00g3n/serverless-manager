@@ -1,5 +1,5 @@
 # Adds namespace to all resources.
-namespace: serverless-manager-system
+namespace: kyma-system
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named
@@ -7,6 +7,10 @@ namespace: serverless-manager-system
 # Note that it should also match with the prefix (text before '-') of the namespace
 # field above.
 namePrefix: serverless-manager-
+
+# Labels to add to all resources and selectors.
+commonLabels:
+  app.kubernetes.io/component: serverless-manager.kyma-project.io
 
 # Labels to add to all resources and selectors.
 #labels:
