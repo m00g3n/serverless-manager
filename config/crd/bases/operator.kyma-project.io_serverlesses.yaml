@@ -40,8 +40,6 @@ spec:
                   enableInternal:
                     type: boolean
                 type: object
-            required:
-            - dockerRegistry
             type: object
           status:
             description: Status defines the observed state of CustomObject.

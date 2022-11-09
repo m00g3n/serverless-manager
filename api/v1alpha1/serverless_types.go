@@ -22,12 +22,12 @@ import (
 )
 
 type DockerRegistry struct {
-	EnableInternal bool `json:"enableInternal,omitempty"`
+	EnableInternal *bool `json:"enableInternal,omitempty"`
 }
 
 // ServerlessSpec defines the desired state of Serverless
 type ServerlessSpec struct {
-	DockerRegistry DockerRegistry `json:"dockerRegistry"`
+	DockerRegistry *DockerRegistry `json:"dockerRegistry,omitempty"`
 }
 
 //+kubebuilder:object:root=true

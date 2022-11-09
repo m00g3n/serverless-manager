@@ -17,41 +17,48 @@ limitations under the License.
 package controllers
 
 import (
-	"context"
+	"encoding/json"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/go-logr/logr"
+	"github.com/kyma-project/module-manager/operator/pkg/declarative"
+	"github.com/kyma-project/module-manager/operator/pkg/types"
+	"github.com/kyma-project/serverless-manager/api/v1alpha1"
 	operatorv1alpha1 "github.com/kyma-project/serverless-manager/api/v1alpha1"
+)
+
+const (
+	chartNs = "kyma-system"
 )
 
 // ServerlessReconciler reconciles a Serverless object
 type ServerlessReconciler struct {
+	declarative.ManifestReconciler
 	client.Client
 	Scheme *runtime.Scheme
+	*rest.Config
+	ChartPath string
 }
 
 //+kubebuilder:rbac:groups=operator.kyma-project.io,resources=serverlesses,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=operator.kyma-project.io,resources=serverlesses/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=operator.kyma-project.io,resources=serverlesses/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Serverless object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.13.0/pkg/reconcile
-func (r *ServerlessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+// initReconciler injects the required configuration into the declarative reconciler.
+func (r *ServerlessReconciler) initReconciler(mgr ctrl.Manager) error {
+	manifestResolver := &ManifestResolver{
+		chartPath: r.ChartPath,
+	}
 
-	// TODO(user): your logic here
-
-	return ctrl.Result{}, nil
+	return r.Inject(mgr, &v1alpha1.Serverless{},
+		declarative.WithManifestResolver(manifestResolver),
+		declarative.WithResourcesReady(true),
+	)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -59,4 +66,49 @@ func (r *ServerlessReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorv1alpha1.Serverless{}).
 		Complete(r)
+}
+
+// ManifestResolver represents the chart information for the passed Sample resource.
+type ManifestResolver struct {
+	chartPath string
+}
+
+// Get returns the chart information to be processed.
+func (m *ManifestResolver) Get(obj types.BaseCustomObject, _ logr.Logger) (types.InstallationSpec, error) {
+	serverless, valid := obj.(*v1alpha1.Serverless)
+	if !valid {
+		return types.InstallationSpec{},
+			fmt.Errorf("invalid type conversion for %s", client.ObjectKeyFromObject(obj))
+	}
+
+	// default empty fields
+	serverless.Spec.Default()
+
+	flags, err := structToFlags(serverless.Spec)
+	if err != nil {
+		return types.InstallationSpec{},
+			fmt.Errorf("resolving manifest failed: %w", err)
+	}
+
+	return types.InstallationSpec{
+		ChartPath: m.chartPath,
+		ChartFlags: types.ChartFlags{
+			ConfigFlags: types.Flags{
+				"Namespace":       chartNs,
+				"CreateNamespace": true,
+			},
+			SetFlags: flags,
+		},
+	}, nil
+}
+
+func structToFlags(obj interface{}) (flags types.Flags, err error) {
+	data, err := json.Marshal(obj)
+
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(data, &flags)
+	return
 }
