@@ -9,4 +9,5 @@ metadata:
     app.kubernetes.io/created-by: serverless-manager
   name: serverless-sample
 spec:
-  # TODO(user): Add fields here
+  dockerRegistry:
+    enableInternal: true
