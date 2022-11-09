@@ -55,17 +55,17 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+test: manifests generate fmt vet envtest module-chart ## Run tests.
+	KUBEBUILDER_CONTROLPLANE_START_TIMEOUT=2m KUBEBUILDER_CONTROLPLANE_STOP_TIMEOUT=2m KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
 
 ##@ Build
 
 .PHONY: build
-build: generate fmt vet ## Build manager binary.
+build: generate fmt vet module-chart ## Build manager binary.
 	go build -o bin/manager main.go
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate fmt vet module-chart ## Run a controller from your host.
 	go run ./main.go
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
@@ -150,3 +150,25 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+## Location to install serverless chart to
+MODULECHART ?= $(shell pwd)/module-chart
+$(MODULECHART):
+	mkdir -p $(MODULECHART)
+	git clone \
+		--depth 1  \
+		--filter=blob:none  \
+		--no-checkout \
+		https://github.com/kyma-project/kyma ${MODULECHART}
+	git -C ${MODULECHART} sparse-checkout set resources/serverless
+	git -C ${MODULECHART} checkout main
+	@mv ${MODULECHART}/resources/serverless/* ${MODULECHART} 
+	@rm -rf ${MODULECHART}/.git
+	@rm -rf ${MODULECHART}/resources
+
+.PHONY: module-chart
+module-chart: ${MODULECHART}
+
+.PHONY: module-chart-clean
+module-chart-clean:
+	rm -rf ${MODULECHART}

@@ -29,7 +29,6 @@ import (
 	"github.com/kyma-project/module-manager/operator/pkg/declarative"
 	"github.com/kyma-project/module-manager/operator/pkg/types"
 	"github.com/kyma-project/serverless-manager/api/v1alpha1"
-	operatorv1alpha1 "github.com/kyma-project/serverless-manager/api/v1alpha1"
 )
 
 const (
@@ -63,8 +62,13 @@ func (r *ServerlessReconciler) initReconciler(mgr ctrl.Manager) error {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ServerlessReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.Config = mgr.GetConfig()
+	if err := r.initReconciler(mgr); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&operatorv1alpha1.Serverless{}).
+		For(&v1alpha1.Serverless{}).
 		Complete(r)
 }
 
