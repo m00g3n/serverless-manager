@@ -17,25 +17,17 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/kyma-project/module-manager/operator/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+type DockerRegistry struct {
+	EnableInternal bool `json:"enableInternal,omitempty"`
+}
 
 // ServerlessSpec defines the desired state of Serverless
 type ServerlessSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of Serverless. Edit serverless_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
-}
-
-// ServerlessStatus defines the observed state of Serverless
-type ServerlessStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	DockerRegistry DockerRegistry `json:"dockerRegistry"`
 }
 
 //+kubebuilder:object:root=true
@@ -46,8 +38,8 @@ type Serverless struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ServerlessSpec   `json:"spec,omitempty"`
-	Status ServerlessStatus `json:"status,omitempty"`
+	Spec   ServerlessSpec `json:"spec,omitempty"`
+	Status types.Status   `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -61,4 +53,18 @@ type ServerlessList struct {
 
 func init() {
 	SchemeBuilder.Register(&Serverless{}, &ServerlessList{})
+}
+
+var _ types.CustomObject = &Serverless{}
+
+func (s *Serverless) GetStatus() types.Status {
+	return s.Status
+}
+
+func (s *Serverless) SetStatus(status types.Status) {
+	s.Status = status
+}
+
+func (s *Serverless) ComponentName() string {
+	return "serverless"
 }
